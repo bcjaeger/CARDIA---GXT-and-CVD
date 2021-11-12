@@ -1,0 +1,160 @@
+---
+title: "GXT and CVD; initial results"
+author: "Byron C Jaeger"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  officedown::rdocx_document:
+    reference_docx: style_manuscript_times_new_roman.docx
+---
+
+```{r setup, include=FALSE}
+
+# set options for the report
+knitr::opts_chunk$set(echo = FALSE, message = FALSE)
+
+## target knits Rmds in their own session, so load libraries here.
+source("packages.R")
+
+rspec <- round_spec() |> 
+  round_using_decimal(digits = 2)
+
+tar_load(data_excluded)
+tar_load(tbl_fit_death)
+tar_load(tbl_fit_cvd)
+tar_load(tbl_chrs)
+
+drop_na_rows <- function(x){
+  keep_rows <- apply(x, 1, function(.x) !all(is.na(.x)))
+  return(x[keep_rows, ])
+} 
+
+```
+
+\newpage
+
+__Table__ Inclusion criteria for the current study
+
+__Question__: Should we drop the last exclusion given our focus is on all cause mortality?
+
+```{r}
+flextable(data_excluded$table) |> 
+ width(j = 1, width = 4) |> 
+ set_header_labels(name = 'Exclusion criteria', 
+                   value = 'Number of participants')
+```
+
+\newpage 
+
+__Table__ Participant characteristics at the Year 0 Exam.
+
+```{r}
+
+tbl_chrs$Y0 |> 
+ as_flex_table() |> 
+ theme_box() |> 
+ align(align = 'center', part = 'all') |> 
+ align(j = 1, align = 'left', part = 'all')
+  
+```
+
+\newpage 
+
+__Table__ Participant characteristics at the Year 20 Exam.
+
+```{r}
+
+tbl_chrs$Y20 |> 
+ as_flex_table() |> 
+ theme_box() |> 
+ align(align = 'center', part = 'all') |> 
+ align(j = 1, align = 'left', part = 'all')
+  
+```
+
+\newpage 
+
+__Table__: Hazard ratio (95%) for all-cause mortality among CARDIA participants in the current analysis.
+
+```{r tbls_death}
+
+
+tbl_fit_death |> 
+ mutate(
+  level = recode(
+   level,
+   "gteq 12 minutes" = "\u2265 12 minutes",
+   "8 to 12 minutes" = "\u2265 8 to < 12 minutes",
+   "lt 8 minutes" = "< 8 minutes",
+   "lt 25% decline" = "< 25% decline",
+   "25 to 35% decline" = "\u2265 25% to < 35% decline",
+   "gteq 35% decline" = "\u2265 35% decline"
+  )
+ ) |> 
+ mutate(
+  tbl_value = if_else(
+   is.na(est),
+   true = '1 (ref)',
+   false = table_glue("{est}\n({lwr}, {upr})", rspec = rspec)
+  ),
+  .after = level
+ ) |>
+ mutate(across(starts_with('pval'), table_pvalue)) |> 
+ select(-est, -lwr, -upr) |> 
+ pivot_wider(names_from = model, values_from = contains('val')) |> 
+ select(variable, level,
+        tbl_value_m1,
+        tbl_value_m2,
+        tbl_value_m3,
+        pval_race_m3,
+        pval_sex_m3) |> 
+ as_grouped_data(groups = 'variable') |> 
+ as_flextable(hide_grouplabel = TRUE) |> 
+ set_header_labels(
+  level = 'Characteristic',
+  tbl_value_m1 = "Model 1",
+  tbl_value_m2 = "Model 2",
+  tbl_value_m3 = "Model 3",
+  pval_race_m3 = "Race",
+  pval_sex_m3 = "Sex"
+ ) |> 
+ add_header_row(values = c("", 
+                           "Hazard ratio (95% CI)", 
+                           "P-value\nfor interaction"), 
+                colwidths = c(1, 3, 2)) |> 
+ theme_box() |> 
+ width(j = ~ pval_race_m3 + pval_sex_m3, 
+       width = 2/3) |> 
+ width(j = ~ tbl_value_m1 + tbl_value_m2 + tbl_value_m3, 
+       width = 1) |>   
+ width(j = ~ level, width = 1.75) |> 
+ italic(i = ~!is.na(variable), italic = TRUE) |> 
+ align(align = 'center', part = 'all') |> 
+ align(j = 1, align = 'left', part = 'all')
+
+```
+
+\newpage 
+
+# Reproducibility
+
+<details><summary>Reproducibility receipt</summary>
+
+```{r}
+## datetime
+Sys.time()
+
+## repository
+if(requireNamespace('git2r', quietly = TRUE)) {
+  git2r::repository()
+} else {
+  c(
+    system2("git", args = c("log", "--name-status", "-1"), stdout = TRUE),
+    system2("git", args = c("remote", "-v"), stdout = TRUE)
+  )
+}
+
+## session info
+sessionInfo()
+```
+
+</details>
