@@ -1,0 +1,157 @@
+---
+title: "Long term mortality risk and maximal fitness"
+always_allow_html: true
+output: 
+  officedown::rdocx_document:
+    reference_docx: style_manuscript_times_new_roman.docx
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, 
+                      message = FALSE,
+                      warning = FALSE,
+                      dpi = 300)
+
+tar_load(c(data_included,
+           tbl_cod, 
+           tbl_chrs,
+           fig_forest, 
+           fig_splines))
+
+margins_normal <- page_mar(bottom = 2.54 * 0.3937, 
+                           top    = 2.54 * 0.3937, 
+                           right  = 2.54 * 0.3937, 
+                           left   = 2.54 * 0.3937,
+                           gutter = 0)
+
+```
+
+__Multi-variable adjustment__:  All estimates are adjusted for CARDIA center, race, sex, education, age, the estimated number of years after Year 0 where paying for basics was somewhat hard, highest degree obtained was high school graduate or general education degree, self reported health was fair or poor, the participant reported smoking or drinking alcohol, body mass index was in the obese or overweight range, and self-reported physical activity did not meet guidelines.
+
+\newpage
+__Table__ Inclusion criteria for the current study
+```{r}
+flextable(data_included$table) |> 
+ theme_box() |> 
+ width(j = 1, width = 4) |> 
+ width(j = 2, width = 1.5) |> 
+ set_header_labels(name = 'Exclusion criteria', 
+                   value = 'Number of participants')
+```
+
+\newpage 
+__Table__ Participant characteristics at the Year 0 Exam.
+```{r}
+
+tbl_chrs$Y0 |> 
+ as_flex_table() |> 
+ theme_box() |> 
+ width(width = 3/4) |> 
+ width(j = 1, width = 1.75) |> 
+ align(align = 'center', part = 'all') |> 
+ align(j = 1, align = 'left', part = 'all')
+  
+```
+
+\newpage 
+__Table__ Participant characteristics at the Year 20 Exam.
+```{r}
+
+tbl_chrs$Y20 |> 
+ as_flex_table() |> 
+ theme_box() |> 
+ width(width = 3/4) |> 
+ width(j = 1, width = 1.75) |>
+ align(align = 'center', part = 'all') |> 
+ align(j = 1, align = 'left', part = 'all')
+  
+```
+
+```{r}
+
+block_section(
+  prop_section(
+    page_size = page_size(orient = "portrait"),
+    type = "continuous",
+    page_margins = margins_normal
+  )
+)
+
+```
+
+__Table__ Number (%) of deaths among CARDIA participants.
+```{r}
+tbl_cod
+```
+
+
+```{r}
+
+block_section(
+  prop_section(
+    page_size = page_size(orient = "landscape"),
+    type = "continuous",
+    page_margins = margins_normal
+  )
+)
+
+```
+
+
+__Figure 1__: Multivariable-adjusted hazard ratios for all-cause mortality and cardiovascular events using natural cubic splines. 
+
+```{r splines, fig.align='center', fig.height=9, fig.width=7.5}
+
+fig_splines$plot[[9]]
+
+```
+Grey shaded areas represent 95% confidence intervals for the point-estimate.
+
+\newpage
+
+__Figure 2__: Multivariable-adjusted hazard ratios for all-cause mortality.
+
+```{r acm_forest, fig.align='center', fig.height=9, fig.width=7.5}
+
+cowplot::plot_grid(
+ fig_forest$plot[[9]],
+ fig_forest$plot[[12]],
+ ncol = 1
+)
+
+
+```
+
+\newpage
+
+__Figure 3__: Multivariable-adjusted hazard ratios for cardiovascular events.
+
+```{r cvd_forest, fig.align='center', fig.height=9, fig.width=7.5}
+
+cowplot::plot_grid(
+ fig_forest$plot[[3]],
+ fig_forest$plot[[6]],
+ ncol = 1
+)
+
+
+```
+
+\newpage
+
+```{r}
+
+
+block_section(
+  prop_section(
+    page_size = page_size(orient = "portrait"),
+    page_margins = page_mar(bottom = 1/8, top = 1/8,
+                            right = 1/4, left = 1/4,
+                            gutter = 0)
+  )
+
+)
+
+```
+

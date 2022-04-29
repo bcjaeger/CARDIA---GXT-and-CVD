@@ -1,0 +1,170 @@
+---
+title: "Flextable, officedown, and table.glue"
+author: "Byron C Jaeger"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: officedown::rdocx_document
+---
+
+__Table__: Hazard ratios (95%) for all-cause mortality.
+
+```{r tbls_death, echo=FALSE, message=FALSE}
+
+library(tidyverse)
+library(table.glue)
+library(flextable)
+
+# A rounding specification for tables.
+# this one is pretty simple: 
+# - round halves to the even option
+# - round all numbers to 2 decimals
+rspec <- round_spec() |> 
+ round_half_even() |> 
+ round_using_decimal(digits = 2)
+
+tbl_fit_death <- read_csv('tbl_fit_death.csv')
+
+mdl_footnote <- paste(
+
+ "Model 1 adjusts for CARDIA center, race, sex, education, and age.",
+
+ "Model 2a adjusts for variables in model 1 plus body mass index, smoking status, and self reported physical activity and health.",
+
+ "Model 2b adjusts for variables in model 1 plus the estimated number of years after Year 0 where paying for basics was somewhat hard, highest degree obtained was high school graduate or general education degree, self reported health was fair or poor, the participant reported smoking or drinking alcohol, body mass index was in the obese or overweight range, and self-reported physical activity did not meet guidelines.",
+
+ sep = '\n'
+
+)
+
+abbrv_footnote <- paste(
+ "CI represents confidence interval",
+ "GXT graded exercise test",
+ "Y0 Year 0",
+ sep = '; '
+)
+
+pval_footnote <- "P-values were computed using the large-sample test from multiply imputed data described by Li, Raghunathan, & Rubin, 1991."
+
+tbl_fit_death |>
+ mutate(
+  # recoding the categories of the two exposure variables
+  level = recode(
+   level,
+   "gteq 12 minutes" = "\u2265 12 minutes",
+   "8 to 12 minutes" = "\u2265 8 to < 12 minutes",
+   "lt 8 minutes" = "< 8 minutes",
+   "lt 25% decline" = "< 25% decline",
+   "25 to 35% decline" = "\u2265 25% to < 35% decline",
+   "gteq 35% decline" = "\u2265 35% decline"
+  ),
+  # creating the table values
+  # I almost always leave model estimates for reference group as missing when
+  # I create the data for these tables. this makes it easy to format the
+  # referent group as 1 (ref) using if_else()
+  tbl_value = if_else(
+   condition = is.na(est),
+   true = '1 (ref)',
+   false = table_glue("{est}\n({lwr}, {upr})", rspec = rspec)
+  ),
+  # format the p-values.
+  # across() lets me apply a function to multiple columns.
+  across(starts_with('pval'), table_pvalue),
+  # specifying where new columns should be placed in the data.
+  # in this case, they should appear to the right of the 'level'
+  # column. I'm doing this b/c the level column will eventually
+  # be the far left column of my table.
+  .after = level,
+ ) |>
+ # don't need the raw table values anymore
+ select(-est, -lwr, -upr) |>
+ # reorganizing for presentation
+ pivot_wider(names_from = model, values_from = contains('val')) |>
+ # only need to present p-values from model 3
+ select(-pval_race_m1,
+        -pval_race_m2,
+        -pval_sex_m1,
+        -pval_sex_m2) |>
+ # make a grouped dataframe: a flextable pre-processing function;
+ # useful if your table will have grouped rows.
+ as_grouped_data(groups = 'variable') |>
+ # here is where the data are coerced into a flextable object
+ # always set hide_grouplabel to TRUE.
+ as_flextable(hide_grouplabel = TRUE) |>
+ # modify the column names in the table:
+ # the underlying data are not modified; this matters because we
+ # will want to refer to columns in the underlying data later and we
+ # will still refer to their original column names.
+ set_header_labels(
+  level = 'Characteristic',
+  tbl_value_m1 = "Model 1",
+  tbl_value_m2 = "Model 2a",
+  tbl_value_m3 = "Model 2b",
+  pval_race_m3 = "Race",
+  pval_sex_m3 = "Sex"
+ ) |>
+ # add spanner labels
+ add_header_row(values = c("Characteristic",
+                           "Hazard ratio (95% CI)",
+                           "P-value\nfor interaction"),
+                colwidths = c(1,
+                              3,
+                              2)) |>
+ # Always modify the header labels and spanner labels __before__
+ # applying a theme to your flextable. If you apply the theme
+ # before modifying the labels, the theme you applied will not be
+ # used in the modified labels! Kind of a design flaw but easy to
+ # work around.
+ theme_box() |>
+ # Set the width of columns in the table.
+ # Using a tilde (~) allows you to specify column names instead of using
+ # a number (e.g. 1) to refer to the 1st column. Here I'm just making
+ # the p-value colums have less width than the other columns in the table.
+ width(j = ~ pval_race_m3 + pval_sex_m3,
+       width = 2/3) |>
+ width(j = ~ tbl_value_m1 + tbl_value_m2 + tbl_value_m3,
+       width = 1) |>
+ width(j = ~ level, width = 1.75) |>
+ # the p-values span 3 rows each, so we merge the identical values
+ # into one cell to avoid repeating ourselves. This is a feature
+ # of flextable that is pretty incredible and deserves praise.
+ merge_v(j = ~ pval_race_m3 + pval_sex_m3, part = 'body') |>
+ # this merges the upper most left cells into one. It looks better this way.
+ merge_v(j = 1, part = 'header') |> 
+ # format the rows of the table where group labels are printed
+ # using ~ !is.na(variable) is a handy way to tell flextable
+ # that you want to target the rows where group labels are printed.
+ # (this works because of the way as_grouped_data() creates its dataframe)
+ italic(i = ~!is.na(variable), italic = TRUE) |>
+ # format the grouped rows with a splash of grey. We are not barbarians.
+ bg(i = ~!is.na(variable), bg = 'grey90') |>
+ # align all of the columns to the center
+ align(align = 'center', part = 'all') |>
+ # align just the first column to the left
+ align(j = 1, align = 'left', part = 'all') |>
+ # here is my least favorite part of flextable: footnote()
+ # positioning; i = 1 targets the first row, j = 2 the second column.
+ #              part = 'header' means we are going to target the
+ #              first row and second column of the header of the table,
+ #              which is everything above and including column labels.
+ footnote(i = 1, j = 2,
+          # if you don't wrap value in as_paragraph(), you'll get an
+          # error message that makes no sense at all.
+          value = as_paragraph(mdl_footnote),
+          # what symbol to link to this footnote
+          ref_symbols = '1',
+          # see above about positioning
+          part = 'header') |>
+ footnote(i = 1, j = 5,
+          # notice how I had to use j = 5 to target the p-value column,
+          # even though the p-value column is actually the third column
+          # in the spanner row? flextable does not account for merged
+          # columns when you specify position using j. This is probably good.
+          value = as_paragraph(pval_footnote),
+          ref_symbols = '2',
+          part = 'header') |>
+ footnote(i = 1, j = 1,
+          value = as_paragraph(abbrv_footnote),
+          # an invisible ref_symbol for footnotes that you don't want to
+          # have linked to any particular cell in the table.
+          ref_symbols = '')
+
+```

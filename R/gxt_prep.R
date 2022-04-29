@@ -4,8 +4,8 @@
 #'
 #' @title
 #' @param data
-make_analysis_data <- function(data_gxt_imputed,
-                               data_excluded) {
+gxt_prep <- function(data_gxt_imputed,
+                     data_included) {
 
  recipes <- map(
   data_gxt_imputed,
@@ -27,7 +27,10 @@ make_analysis_data <- function(data_gxt_imputed,
  )
 
  for(i in names(mdl_data)){
-  mdl_data[[i]]$preds <- predict(mdl_fits[[i]])
+
+  mdl_data[[i]]$preds <- predict(mdl_fits[[i]],
+                                 newdata = mdl_data[[i]],
+                                 na.action = na.pass)
  }
 
  cmp_slope <- function(x, y, x_sd, x_mean){
@@ -65,26 +68,50 @@ make_analysis_data <- function(data_gxt_imputed,
   }
  )
 
- data_excluded$data_cvd$ID <- paste0('..', data_excluded$data_cvd$ID)
- data_excluded$data_cvd$ID <- factor(data_excluded$data_cvd$ID)
+ data_included$data_cvd$ID <- paste0('..', data_included$data_cvd$ID)
+ data_included$data_cvd$ID <- factor(data_included$data_cvd$ID)
 
  map2(data_gxt_imputed, gxt_int_slp, left_join) |>
   map(filter, exam == '..G') |>
-  map(left_join, data_excluded$data_cvd) |>
+  # map(left_join, data_included$data_cvd) |>
   map(ungroup) |>
   map(mutate,
-      gxt_int_cat = cut(gxt_duration_int,
-                        breaks = c(-Inf, 480, 720, Inf),
-                        include.lowest = TRUE,
-                        labels = c("..lt_8m", "..gteq_8m_lt_12m", "..gteq_12m")),
+
+      gxt_int_cat = if_else(
+       sex == 'Male',
+       true = cut(
+        gxt_duration_int,
+        breaks = c(-Inf, 600, 720, Inf),
+        include.lowest = TRUE,
+        labels = c("..low", "..middle", "..high")
+       ),
+       false = cut(
+        gxt_duration_int,
+        breaks = c(-Inf, 420, 540, Inf),
+        include.lowest = TRUE,
+        labels = c("..low", "..middle", "..high")
+       )
+      ),
+
+      race_sex = factor(paste(race,
+                              str_remove(sex, '\\.\\.'),
+                              sep = '_')),
+
       gxt_reduce_cat = cut(gxt_duration_slp * (-1),
                            breaks = c(-Inf, 5, 10, Inf),
                            include.lowest = TRUE,
-                           labels = c("..lt_5s", "..gteq_5s_lt_10s", "..gteq_10s")),
+                           labels = c("..lt_5s",
+                                      "..gteq_5s_lt_10s",
+                                      "..gteq_10s")),
+
       gxt_pch_cat = cut(gxt_duration_pch * (-1),
                         breaks = c(-Inf, 0.25, 0.35, Inf),
-                        labels = c("..lt_25", "..gteq_25_lt_35", "..gteq_35")),
-      gxt_int_cat = fct_rev(gxt_int_cat)
+                        labels = c("..lt_25",
+                                   "..gteq_25_lt_35",
+                                   "..gteq_35")),
+
+      # gxt_int_cat = fct_rev(gxt_int_cat)
+      gxt_pch_cat = fct_rev(gxt_pch_cat)
   )
 
 }

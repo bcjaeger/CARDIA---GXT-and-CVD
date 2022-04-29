@@ -7,7 +7,7 @@
 #' @param data_cvd
 exclude <- function(data_gxt_all, data_cvd) {
 
- # data before any exclusions
+ # convert to long data before any exclusions
  e0 <- data_gxt_all |>
   mutate(across(everything(), as.character)) |>
   pivot_longer(cols = -c(ID, CENTER, race, sex)) |>
@@ -56,6 +56,7 @@ exclude <- function(data_gxt_all, data_cvd) {
  # exclusion 2: no beta blockers
  e2 <- e1 |>
   mutate(
+   # assume no beta blockers if they weren't recorded in the meds data
    blocker_beta = replace(blocker_beta, is.na(blocker_beta), 'no'),
    blocker_beta_during_gxt = if_else(
     condition = exam %in% c("A","D","G") & blocker_beta == 'yes',

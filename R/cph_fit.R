@@ -6,39 +6,77 @@
 #' @param data_analysis
 #' @param status
 #' @param time
+#'
+
+as_mitml_result <- function(x){
+class(x) <- c("mitml.result", class(x))
+x
+}
+
 cph_fit <- function(data_analysis,
-                    exposures,
+                    subset = 'overall',
+                    exposure,
                     status,
-                    time) {
+                    time,
+                    pass = 1) {
+
+
+ if(subset != 'overall' && pass == 1){
+
+  lvls <- levels(data_analysis[[1]][[subset]])
+  output <- vector(mode = 'list', length = length(lvls))
+  names(output) <- lvls
+
+  for(lvl in lvls){
+
+   print(lvl)
+
+   data_analysis_sub <- data_analysis
+
+   for(i in seq_along(data_analysis_sub)){
+
+    rows_keep <- data_analysis_sub[[i]][[subset]] == lvl
+    data_analysis_sub[[i]] <- data_analysis_sub[[i]][rows_keep, ]
+
+   }
+
+   output[[lvl]] <- cph_fit(data_analysis = data_analysis_sub,
+                            subset = subset,
+                            exposure = exposure,
+                            status = status,
+                            time = time,
+                            pass = 2)
+
+  }
+
+  return(output)
+
+ }
 
   data_fit <- map(
-   .x = data_analysis,
+   .x = data_analysis[-1],
    ~ .x |>
      rename(status = !!status,  time = !!time) |>
      ungroup() |>
-     mutate(gxt_duration = gxt_duration / 60,
+     mutate(gxt_duration = gxt_duration / 60, # per minute
             gxt_duration_int = gxt_duration_int / 60,
+            gxt_duration_pch = (gxt_duration_pch * 100) / 5, # per 5%
             exam_age = exam_age / 5,
             bmi = bmi / 5,
             pa_self = pa_self / 100,
-            across(starts_with("duration"), ~.x / 10))
+            across(starts_with("duration"), ~.x / 10),
+            time = time / 365.25)
   )
 
-  time_scale <- 1 / 365
+  take_out <- subset
 
-  map(
-   .x = data_fit,
-   .f = ~ {
-    total_events <- sum(getElement(.x, 'status'))
-    total_time <- sum(getElement(.x, 'time')) * time_scale
-
-    estimate = total_events / total_time
-
-    fit <- glm(total_events ~ offset(log(total_time)), family="poisson")
-   }
-  )
+  if(subset == 'race_sex') take_out <- c('race', 'sex')
 
   c1 <- c('CENTER', 'race', 'sex', 'educ', 'exam_age')
+
+  if(exposure == 'gxt_duration_pch') c1 <- c(c1, 'gxt_duration_int')
+
+  c1 <- setdiff(c1, take_out)
 
   c2 <- c(c1, 'bmi', 'pa_self', 'health_self', 'smoke')
 
@@ -54,43 +92,24 @@ cph_fit <- function(data_analysis,
 
   formulas <- map(
    .x = list(m1 = c1, m2 = c2, m3 = c3),
-   .f = ~ paste(c(exposures, .x), collapse = ' + ')
+   .f = ~ paste(c(exposure, .x), collapse = ' + ')
   ) |>
    map(~ paste("Surv(time, status) ~", .x)) |>
    map(as.formula)
 
   formulas_int1_race <- map(
    .x = list(m1 = c1, m2 = c2, m3 = c3),
-   .f = ~ paste(c(exposures, paste0(exposures[1], ":race"), .x), collapse = ' + ')
-  ) |>
-   map(~ paste("Surv(time, status) ~", .x)) |>
-   map(as.formula)
-
-  formulas_int2_race <- map(
-   .x = list(m1 = c1, m2 = c2, m3 = c3),
-   .f = ~ paste(c(exposures, paste0(exposures[2], ":race"), .x), collapse = ' + ')
+   .f = ~ paste(paste(c(exposure, .x), "* race"), collapse = ' + ')
   ) |>
    map(~ paste("Surv(time, status) ~", .x)) |>
    map(as.formula)
 
   formulas_int1_sex <- map(
    .x = list(m1 = c1, m2 = c2, m3 = c3),
-   .f = ~ paste(c(exposures, paste0(exposures[1], ":sex"), .x), collapse = ' + ')
+   .f = ~ paste(paste(c(exposure, .x), "* sex"), collapse = ' + ')
   ) |>
    map(~ paste("Surv(time, status) ~", .x)) |>
    map(as.formula)
-
-  formulas_int2_sex <- map(
-   .x = list(m1 = c1, m2 = c2, m3 = c3),
-   .f = ~ paste(c(exposures, paste0(exposures[2], ":sex"), .x), collapse = ' + ')
-  ) |>
-   map(~ paste("Surv(time, status) ~", .x)) |>
-   map(as.formula)
-
-  as_mitml_result <- function(x){
-   class(x) <- c("mitml.result", class(x))
-   x
-  }
 
   fits <- map(
    .x = formulas,
@@ -99,47 +118,89 @@ cph_fit <- function(data_analysis,
    }
   )
 
-  fits_int1_race <- map(
-   .x = formulas_int1_race,
-   .f = function(formula){
-    as_mitml_result(map(.x = data_fit, .f = ~ coxph(formula, data = .x)))
-   }
-  )
+  pvals <- list()
 
-  fits_int2_race <- map(
-   .x = formulas_int2_race,
-   .f = function(formula){
-    as_mitml_result(map(.x = data_fit, .f = ~ coxph(formula, data = .x)))
-   }
-  )
+  if(subset != 'race' && subset != 'race_sex'){
 
-  fits_int1_sex <- map(
-   .x = formulas_int1_sex,
-   .f = function(formula){
-    as_mitml_result(map(.x = data_fit, .f = ~ coxph(formula, data = .x)))
-   }
-  )
 
-  fits_int2_sex <- map(
-   .x = formulas_int2_sex,
-   .f = function(formula){
-    as_mitml_result(map(.x = data_fit, .f = ~ coxph(formula, data = .x)))
-   }
-  )
+   fits_int1_race <- map(
+    .x = formulas_int1_race,
+    .f = function(formula){
+     as_mitml_result(map(.x = data_fit, .f = ~ coxph(formula, data = .x)))
+    }
+   )
 
-  anova_pval <- function(.x, .y, method = 'D2'){
-    anova(.x, .y, method=method)$test[[1]]$test[, 'P(>F)']
+   formulas_null <- map(
+    formulas_int1_race,
+    ~update(.x, as.formula(paste0(". ~ . -", exposure, ":", "race")))
+   )
+
+   fits_null <- map(
+    .x = formulas_null,
+    .f = function(formula){
+     as_mitml_result(map(.x = data_fit,
+                         .f = ~ coxph(formula, data = .x)))
+    }
+   )
+
+   pvals$race <- map2_dfc(
+    .x = fits_int1_race,
+    .y = fits_null,
+    .f = ~ testModels(model = .x,
+                      null.model = .y,
+                      method = 'D2',
+                      use = 'likelihood') |>
+     getElement('test') |>
+     as.data.frame() |>
+     pull(`P(>F)`)
+   )
+
   }
 
-  pvals <- bind_rows(
-   race = map2_dfc(fits, fits_int1_race, anova_pval),
-   race = map2_dfc(fits, fits_int2_race, anova_pval),
-   sex  = map2_dfc(fits, fits_int1_sex, anova_pval),
-   sex  = map2_dfc(fits, fits_int2_sex, anova_pval),
-   .id = 'interaction'
-  ) |>
-   mutate(variable = rep(exposures, 2),
-          .before = 1)
+  if(subset != 'sex' && subset != 'race_sex'){
+
+   # if(exposure == 'gxt_duration_int' && status == 'status_death' &&
+   #    data_analysis$Dataset_1$race[1] == '..Black') browser()
+
+   fits_int1_sex <- map(
+    .x = formulas_int1_sex,
+    .f = function(formula){
+     as_mitml_result(map(.x = data_fit,
+                         .f = ~ coxph(formula, data = .x)))
+    }
+   )
+
+   formulas_null <- map(
+    formulas_int1_sex,
+    ~update(.x, as.formula(paste0(". ~ . -", exposure, ":", "sex")))
+   )
+
+   fits_null <- map(
+    .x = formulas_null,
+    .f = function(formula){
+     as_mitml_result(map(.x = data_fit,
+                         .f = ~ coxph(formula, data = .x)))
+    }
+   )
+
+   pvals$sex <- map2_dfc(
+    .x = fits_int1_sex,
+    .y = fits_null,
+    .f = ~ testModels(model = .x,
+                      null.model = .y,
+                      method = 'D2',
+                      use = 'wald') |>
+     getElement('test') |>
+     as.data.frame() |>
+     pull(`P(>F)`)
+   )
+
+  }
+
+  pvals <- bind_rows(pvals, .id = 'interaction') |>
+   mutate(variable = exposure, .before = 1)
+
+  # if(any(pvals$m3 > 0.98)) browser()
 
   list(
    fits = fits,

@@ -18,15 +18,579 @@ source("packages.R")
 rspec <- round_spec() |> 
   round_using_decimal(digits = 2)
 
-tar_load(data_excluded)
-tar_load(tbl_fit_death)
-tar_load(tbl_fit_cvd)
+tar_load(data_included)
+tar_load(tbl_fit_death_catg)
+tar_load(tbl_fit_death_catg_race)
+tar_load(tbl_fit_death_ctns)
+tar_load(tbl_fit_death_ctns_race)
+tar_load(tbl_fit_cvd_catg)
+tar_load(tbl_fit_cvd_catg_race)
+tar_load(tbl_fit_cvd_ctns)
+tar_load(tbl_fit_cvd_ctns_race)
 tar_load(tbl_chrs)
 
 drop_na_rows <- function(x){
   keep_rows <- apply(x, 1, function(.x) !all(is.na(.x)))
   return(x[keep_rows, ])
 } 
+
+recode_variable <- c(
+ gxt_duration = "GXT duration, Y20",
+ gxt_duration_pch = "GXT duration per 10%\nretained at Y20 vs Y0",
+ gxt_duration_int = "GXT duration at Y0,\nper minute",
+ gxt_duration_slp = "Change in GXT duration, minutes per year",
+ gxt_int_cat = "GXT duration at baseline, fitness category",
+ gxt_pch_cat = "GXT duration, category of % change from Y0 to Y20",
+ high = "High",
+ middle = "Average",
+ low = "Low",
+ CENTER = "CARDIA center",
+ race = "White",
+ sex = "Male",
+ educ = "HS/GED or less",
+ exam_age = "Age, per 5 years",
+ bmi = "Body mass index at Y20, per 5 units",
+ pa_self = "Self reported physical activity at Y20, per 100 units",
+ health_self = "Fair or poor self rated health at Y20",
+ smoke = "Never smoked at Y20",
+ duration_educ_hs_ged_or_less = 
+  "Duration with HS/GED or less, per 10 years",
+ duration_paying_for_basics_somewhat_hard = 
+  "Duration with paying for basics somewhat hard, per 10 years",
+ duration_health_self_fair_poor = 
+  "Duration with self-rated health fair or poor, per 10 years",
+ duration_alcohol_alc_yes = 
+  "Duration with alcohol use, per 10 years",
+ duration_smoke_current = 
+  "Duration with smoking, per 10 years",
+ duration_smoke_former = 
+  "Duration as former smoker, per 10 years",
+ duration_bmi_cat_over_or_obese = 
+  "Duration with overweight/obesity, per 10 years",
+ duration_pa_self_cat_not_meeting_guidelines = 
+  "Duration not meeting physical activity guidelines, per 10 years"
+)
+
+gg_spanners <- tibble(
+ level = c('gxt_int_cat',
+           'gxt_pch_cat'), 
+ variable = level
+) |> 
+ mutate(
+  across(everything(), recode, !!!recode_variable)
+ )
+
+mdl_footnote <- paste(
+ 
+  "Model 1 adjusts for CARDIA center, race, sex, education, and age.",
+  
+  "Model 2a adjusts for variables in model 1 plus body mass index, smoking status, and self reported physical activity and health.",
+  
+  "Model 2b adjusts for variables in model 1 plus the estimated number of years after Year 0 where paying for basics was somewhat hard, highest degree obtained was high school graduate or general education degree, self reported health was fair or poor, the participant reported smoking or drinking alcohol, body mass index was in the obese or overweight range, and self-reported physical activity did not meet guidelines.",
+  
+  sep = '\n'
+  
+)
+
+abbrv_footnote <- paste(
+ "CI represents confidence interval",
+ "GXT graded exercise test",
+ "Y0 Year 0",
+ sep = '; '
+)
+
+pval_footnote <- "P-values were computed adjusting for variables in Model 2b, using the large-sample test from multiply imputed data described by Li, Raghunathan, & Rubin, 1991."
+
+data_fit_ovrl <- list(
+ death = bind_rows(tbl_fit_death_ctns,
+                   tbl_fit_death_catg),
+ cvd = bind_rows(tbl_fit_cvd_ctns,
+                 tbl_fit_cvd_catg)
+) 
+
+gg_data_ovrl <- data_fit_ovrl |> 
+ map(
+  ~ .x |> 
+   mutate(
+    # recoding the categories of the two exposure variables
+    level = recode(
+     level,
+     "high" = "High",
+     "middle" = "Medium",
+     "low" = "Low",
+     "lt_25" = "< 25% decline",
+     "gteq_25_lt_35" = "\u2265 25% to < 35% decline",
+     "gteq_35" = "\u2265 35% decline"
+    ),
+    variable = recode(variable, !!!recode_variable),
+    # creating the table values
+    # I almost always leave model estimates for reference group as missing when
+    # I create the data for these tables. this makes it easy to format the 
+    # referent group as 1 (ref) using if_else()
+    label = if_else(
+     condition = is.na(est),
+     true = '1 (ref)',
+     false = table_glue("{est}\n({lwr}, {upr})", rspec = rspec)
+    ),
+    across(.cols = c(est, lwr, upr),
+           .fns = ~ if_else(condition = is.na(est),
+                            true = 1, 
+                            false = .x))
+   ) |> 
+   filter(model == 'm3') |> 
+   add_row(gg_spanners[1, ], .before = 3) |> 
+   add_row(gg_spanners[1, ], .before = 7) |> 
+   mutate(
+    level = if_else(is.na(level), variable, level),
+    variable = if_else(variable == level, NA_character_, variable),
+    # format the p-values. 
+    # across() lets me apply a function to multiple columns.
+    across(starts_with('pval'), table_pvalue),
+    # specifying where new columns should be placed in the data.
+    # in this case, they should appear to the right of the 'level'
+    # column. I'm doing this b/c the level column will eventually
+    # be the far left column of my table.
+    .after = level,
+   ) |>
+   rename(group = level) |> 
+   mutate(
+    group = if_else(
+     condition = is.na(variable),
+     true = group,
+     false = paste("  ", group)
+    )
+   ) |> 
+   select(variable, group, starts_with('pval'), est, lwr, upr, label) |> 
+   mutate(x = seq(n(), 1))
+ ) 
+
+gg_data <- gg_data_ovrl$death
+
+gg_data |> 
+ left_join(gg_spanners)
+
+gg_header <- tibble(
+  label = c("Group", "HR (95% CI)", "Race", "Sex"),
+  est = c(-3, -1.5, -0.75, 0),
+  hjust = c(0, 1/2, 1/2, 1/2),
+  x = max(gg_data$x) + 1
+)
+
+gg_table <- gg_data |> 
+  select(x, est, group, label, starts_with('pval'))
+
+min_est = min(gg_data$lwr, na.rm = TRUE)
+max_est = max(gg_data$upr, na.rm = TRUE)
+
+ggplot(gg_data) +
+ aes(x = x, y = est, label = label) + 
+ geom_pointrange(pch = 15, aes(ymin = lwr, ymax = upr)) +
+ geom_text(data = gg_header, aes(hjust = hjust)) + 
+ geom_text(data = gg_table, aes(y = -1.5), hjust = 1/2) + 
+ geom_text(data = gg_table, aes(y = -3, label = group), hjust = 0) +
+ coord_flip() + 
+ theme_bw() + 
+ geom_segment(y = 0, yend = 0, 
+              x = 1/2, xend = 1/2 + max(gg_longer$x),
+              linetype = 2,
+              color = 'grey') + 
+ geom_vline(xintercept = seq(nrow(gg_longer)+2)-1/2) + 
+ labs(y = '') + 
+ theme(panel.grid = element_blank(),
+       panel.border = element_blank(),
+       axis.ticks = element_blank(),
+       axis.title.y = element_blank(),
+       axis.text.y = element_blank(),
+       axis.text.x = element_text(size = 11, color = 'black'))
+
+
+tbls_fit_ovrl <- data_fit_ovrl |> 
+ map(
+  ~ .x |> 
+   mutate(
+    # recoding the categories of the two exposure variables
+  level = recode(
+   level,
+   "high" = "High",
+   "middle" = "Medium",
+   "low" = "Low",
+   "lt_25" = "< 25% decline",
+   "gteq_25_lt_35" = "\u2265 25% to < 35% decline",
+   "gteq_35" = "\u2265 35% decline"
+  ),
+  variable = recode(variable, !!!recode_variable),
+  # creating the table values
+  # I almost always leave model estimates for reference group as missing when
+  # I create the data for these tables. this makes it easy to format the 
+  # referent group as 1 (ref) using if_else()
+  tbl_value = if_else(
+   condition = is.na(est),
+   true = '1 (ref)',
+   false = table_glue("{est}\n({lwr}, {upr})", rspec = rspec)
+  ),
+  level = if_else(is.na(level), variable, level),
+  variable = if_else(variable == level, NA_character_, variable),
+  # format the p-values. 
+  # across() lets me apply a function to multiple columns.
+  across(starts_with('pval'), table_pvalue),
+  # specifying where new columns should be placed in the data.
+  # in this case, they should appear to the right of the 'level'
+  # column. I'm doing this b/c the level column will eventually
+  # be the far left column of my table.
+  .after = level,
+ ) |>
+ # don't need the raw table values anymore
+ select(-est, -lwr, -upr) |> 
+ # reorganizing for presentation
+ pivot_wider(names_from = model, values_from = contains('val')) |> 
+ # only need to present p-values from model 3
+ select(-pval_race_m1, 
+        -pval_race_m2,
+        -pval_sex_m1,
+        -pval_sex_m2) |> 
+ # make a grouped dataframe: a flextable pre-processing function; 
+ # useful if your table will have grouped rows.
+ as_grouped_data(groups = 'variable') |> 
+ # here is where the data are coerced into a flextable object
+ # always set hide_grouplabel to TRUE. 
+ drop_na_rows() |> 
+ as_flextable(hide_grouplabel = TRUE) |> 
+ # modify the column names in the table:
+ # the underlying data are not modified; this matters because we 
+ # will want to refer to columns in the underlying data later and we
+ # will still refer to their original column names.
+ set_header_labels(
+  level = 'Characteristic',
+  tbl_value_m1 = "Model 1",
+  tbl_value_m2 = "Model 2a",
+  tbl_value_m3 = "Model 2b",
+  pval_race_m3 = "Race",
+  pval_sex_m3 = "Sex"
+ ) |> 
+ # add spanner labels
+ add_header_row(values = c("", 
+                           "Hazard ratio (95% CI)", 
+                           "P-interaction"), 
+                colwidths = c(1, 
+                              3, 
+                              2)) |> 
+ # Always modify the header labels and spanner labels __before__
+ # applying a theme to your flextable. If you apply the theme 
+ # before modifying the labels, the theme you applied will not be
+ # used in the modified labels! Kind of a design flaw but easy to 
+ # work around.
+ theme_box() |> 
+ # Set the width of columns in the table.
+ # Using a tilde (~) allows you to specify column names instead of using 
+ # a number (e.g. 1) to refer to the 1st column. Here I'm just making
+ # the p-value colums have less width than the other columns in the table.
+ width(j = ~ pval_race_m3 + pval_sex_m3, 
+       width = 2/3) |> 
+ width(j = ~ tbl_value_m1 + tbl_value_m2 + tbl_value_m3, 
+       width = 1) |>   
+ width(j = ~ level, width = 2.25) |> 
+ # the p-values span 3 rows each, so we merge the identical values
+ # into one cell to avoid repeating ourselves. This is a feature
+ # of flextable that is pretty incredible and deserves praise.
+ merge_v(j = ~ pval_race_m3 + pval_sex_m3, part = 'body') |> 
+ # format the rows of the table where group labels are printed
+ # using ~ !is.na(variable) is a handy way to tell flextable
+ # that you want to target the rows where group labels are printed.
+ # (this works because of the way as_grouped_data() creates its dataframe)
+ italic(i = ~!is.na(variable), italic = TRUE) |> 
+ # format the grouped rows with a splash of grey. We are not barbarians.
+ bg(i = ~!is.na(variable), bg = 'grey90') |> 
+ # align all of the columns to the center
+ align(align = 'center', part = 'all') |> 
+ # align just the first column to the left
+ align(j = 1, align = 'left', part = 'all') |> 
+ # here is my least favorite part of flextable: footnote()
+ # positioning; i = 1 targets the first row, j = 2 the second column.
+ #              part = 'header' means we are going to target the 
+ #              first row and second column of the header of the table,
+ #              which is everything above and including column labels.
+ footnote(i = 1, j = 2, 
+          # if you don't wrap value in as_paragraph(), you'll get an 
+          # error message that makes no sense at all.
+          value = as_paragraph(mdl_footnote), 
+          # what symbol to link to this footnote
+          ref_symbols = '1', 
+          # see above about positioning
+          part = 'header') |>
+ footnote(i = 1, j = 5,
+          # notice how I had to use j = 5 to target the p-value column,
+          # even though the p-value column is actually the third column
+          # in the spanner row? flextable does not account for merged
+          # columns when you specify position using j. This is probably good.
+          value = as_paragraph(pval_footnote),
+          ref_symbols = '2',
+          part = 'header') |> 
+ footnote(i = 1, j = 1,
+          value = as_paragraph(abbrv_footnote),
+          # an invisible ref_symbol for footnotes that you don't want to
+          # have linked to any particular cell in the table.
+          ref_symbols = '')
+ )
+
+tbls_fit_black <- list(
+ death = bind_rows(tbl_fit_death_ctns_race$..Black,
+                   tbl_fit_death_catg_race$..Black),
+ cvd = bind_rows(tbl_fit_cvd_ctns_race$..Black,
+                 tbl_fit_cvd_catg_race$..Black)
+) |> 
+ map(
+  ~ .x |> 
+   mutate(
+  # recoding the categories of the two exposure variables
+  level = recode(
+   level,
+   "high" = "High",
+   "middle" = "Medium",
+   "low" = "Low",
+   "lt_25" = "< 25% decline",
+   "gteq_25_lt_35" = "\u2265 25% to < 35% decline",
+   "gteq_35" = "\u2265 35% decline"
+  ),
+  variable = recode(variable, !!!recode_variable),
+  # creating the table values
+  # I almost always leave model estimates for reference group as missing when
+  # I create the data for these tables. this makes it easy to format the 
+  # referent group as 1 (ref) using if_else()
+  tbl_value = if_else(
+   condition = is.na(est),
+   true = '1 (ref)',
+   false = table_glue("{est}\n({lwr}, {upr})", rspec = rspec)
+  ),
+  level = if_else(is.na(level), variable, level),
+  variable = if_else(variable == level, NA_character_, variable),
+  # format the p-values. 
+  # across() lets me apply a function to multiple columns.
+  across(starts_with('pval'), table_pvalue),
+  # specifying where new columns should be placed in the data.
+  # in this case, they should appear to the right of the 'level'
+  # column. I'm doing this b/c the level column will eventually
+  # be the far left column of my table.
+  .after = level,
+ ) |>
+ # don't need the raw table values anymore
+ select(-est, -lwr, -upr) |> 
+ # reorganizing for presentation
+ pivot_wider(names_from = model, values_from = contains('val')) |> 
+ # only need to present p-values from model 3
+ select(-pval_sex_m1,
+        -pval_sex_m2) |> 
+ # make a grouped dataframe: a flextable pre-processing function; 
+ # useful if your table will have grouped rows.
+ as_grouped_data(groups = 'variable') |> 
+ # here is where the data are coerced into a flextable object
+ # always set hide_grouplabel to TRUE. 
+ drop_na_rows() |> 
+ as_flextable(hide_grouplabel = TRUE) |> 
+ # modify the column names in the table:
+ # the underlying data are not modified; this matters because we 
+ # will want to refer to columns in the underlying data later and we
+ # will still refer to their original column names.
+ set_header_labels(
+  level = 'Characteristic',
+  tbl_value_m1 = "Model 1",
+  tbl_value_m2 = "Model 2a",
+  tbl_value_m3 = "Model 2b",
+  pval_sex_m3 = "Sex"
+ ) |> 
+ # add spanner labels
+ add_header_row(values = c("", 
+                           "Hazard ratio (95% CI)", 
+                           "P-interaction"), 
+                colwidths = c(1, 
+                              3, 
+                              1)) |> 
+ # Always modify the header labels and spanner labels __before__
+ # applying a theme to your flextable. If you apply the theme 
+ # before modifying the labels, the theme you applied will not be
+ # used in the modified labels! Kind of a design flaw but easy to 
+ # work around.
+ theme_box() |> 
+ # Set the width of columns in the table.
+ # Using a tilde (~) allows you to specify column names instead of using 
+ # a number (e.g. 1) to refer to the 1st column. Here I'm just making
+ # the p-value colums have less width than the other columns in the table.
+ width(j = ~ pval_sex_m3 + pval_sex_m3, 
+       width = 2/3) |> 
+ width(j = ~ tbl_value_m1 + tbl_value_m2 + tbl_value_m3, 
+       width = 1) |>   
+ width(j = ~ level, width = 2.25) |> 
+ # the p-values span 3 rows each, so we merge the identical values
+ # into one cell to avoid repeating ourselves. This is a feature
+ # of flextable that is pretty incredible and deserves praise.
+ merge_v(j = ~ pval_sex_m3, part = 'body') |> 
+ # format the rows of the table where group labels are printed
+ # using ~ !is.na(variable) is a handy way to tell flextable
+ # that you want to target the rows where group labels are printed.
+ # (this works because of the way as_grouped_data() creates its dataframe)
+ italic(i = ~!is.na(variable), italic = TRUE) |> 
+ # format the grouped rows with a splash of grey. We are not barbarians.
+ bg(i = ~!is.na(variable), bg = 'grey90') |> 
+ # align all of the columns to the center
+ align(align = 'center', part = 'all') |> 
+ # align just the first column to the left
+ align(j = 1, align = 'left', part = 'all') |> 
+ # here is my least favorite part of flextable: footnote()
+ # positioning; i = 1 targets the first row, j = 2 the second column.
+ #              part = 'header' means we are going to target the 
+ #              first row and second column of the header of the table,
+ #              which is everything above and including column labels.
+ footnote(i = 1, j = 2, 
+          # if you don't wrap value in as_paragraph(), you'll get an 
+          # error message that makes no sense at all.
+          value = as_paragraph(mdl_footnote), 
+          # what symbol to link to this footnote
+          ref_symbols = '1', 
+          # see above about positioning
+          part = 'header') |>
+ footnote(i = 1, j = 5,
+          # notice how I had to use j = 5 to target the p-value column,
+          # even though the p-value column is actually the third column
+          # in the spanner row? flextable does not account for merged
+          # columns when you specify position using j. This is probably good.
+          value = as_paragraph(pval_footnote),
+          ref_symbols = '2',
+          part = 'header') |> 
+ footnote(i = 1, j = 1,
+          value = as_paragraph(abbrv_footnote),
+          # an invisible ref_symbol for footnotes that you don't want to
+          # have linked to any particular cell in the table.
+          ref_symbols = '')
+ )
+
+tbls_fit_white <- list(
+ death = bind_rows(tbl_fit_death_ctns_race$..White,
+                   tbl_fit_death_catg_race$..White),
+ cvd = bind_rows(tbl_fit_cvd_ctns_race$..White,
+                 tbl_fit_cvd_catg_race$..White)
+) |> 
+ map(
+  ~ .x |> 
+   mutate(
+  # recoding the categories of the two exposure variables
+  level = recode(
+   level,
+   "high" = "High",
+   "middle" = "Medium",
+   "low" = "Low",
+   "lt_25" = "< 25% decline",
+   "gteq_25_lt_35" = "\u2265 25% to < 35% decline",
+   "gteq_35" = "\u2265 35% decline"
+  ),
+  variable = recode(variable, !!!recode_variable),
+  # creating the table values
+  # I almost always leave model estimates for reference group as missing when
+  # I create the data for these tables. this makes it easy to format the 
+  # referent group as 1 (ref) using if_else()
+  tbl_value = if_else(
+   condition = is.na(est),
+   true = '1 (ref)',
+   false = table_glue("{est}\n({lwr}, {upr})", rspec = rspec)
+  ),
+  level = if_else(is.na(level), variable, level),
+  variable = if_else(variable == level, NA_character_, variable),
+  # format the p-values. 
+  # across() lets me apply a function to multiple columns.
+  across(starts_with('pval'), table_pvalue),
+  # specifying where new columns should be placed in the data.
+  # in this case, they should appear to the right of the 'level'
+  # column. I'm doing this b/c the level column will eventually
+  # be the far left column of my table.
+  .after = level,
+ ) |>
+ # don't need the raw table values anymore
+ select(-est, -lwr, -upr) |> 
+ # reorganizing for presentation
+ pivot_wider(names_from = model, values_from = contains('val')) |> 
+ # only need to present p-values from model 3
+ select(-pval_sex_m1,
+        -pval_sex_m2) |> 
+ # make a grouped dataframe: a flextable pre-processing function; 
+ # useful if your table will have grouped rows.
+ as_grouped_data(groups = 'variable') |> 
+ # here is where the data are coerced into a flextable object
+ # always set hide_grouplabel to TRUE. 
+ drop_na_rows() |> 
+ as_flextable(hide_grouplabel = TRUE) |> 
+ # modify the column names in the table:
+ # the underlying data are not modified; this matters because we 
+ # will want to refer to columns in the underlying data later and we
+ # will still refer to their original column names.
+ set_header_labels(
+  level = 'Characteristic',
+  tbl_value_m1 = "Model 1",
+  tbl_value_m2 = "Model 2a",
+  tbl_value_m3 = "Model 2b",
+  pval_sex_m3 = "Sex"
+ ) |> 
+ # add spanner labels
+ add_header_row(values = c("", 
+                           "Hazard ratio (95% CI)", 
+                           "P-interaction"), 
+                colwidths = c(1, 
+                              3, 
+                              1)) |> 
+ # Always modify the header labels and spanner labels __before__
+ # applying a theme to your flextable. If you apply the theme 
+ # before modifying the labels, the theme you applied will not be
+ # used in the modified labels! Kind of a design flaw but easy to 
+ # work around.
+ theme_box() |> 
+ # Set the width of columns in the table.
+ # Using a tilde (~) allows you to specify column names instead of using 
+ # a number (e.g. 1) to refer to the 1st column. Here I'm just making
+ # the p-value colums have less width than the other columns in the table.
+ width(j = ~ pval_sex_m3 + pval_sex_m3, 
+       width = 2/3) |> 
+ width(j = ~ tbl_value_m1 + tbl_value_m2 + tbl_value_m3, 
+       width = 1) |>   
+ width(j = ~ level, width = 2.25) |> 
+ # the p-values span 3 rows each, so we merge the identical values
+ # into one cell to avoid repeating ourselves. This is a feature
+ # of flextable that is pretty incredible and deserves praise.
+ merge_v(j = ~ pval_sex_m3, part = 'body') |> 
+ # format the rows of the table where group labels are printed
+ # using ~ !is.na(variable) is a handy way to tell flextable
+ # that you want to target the rows where group labels are printed.
+ # (this works because of the way as_grouped_data() creates its dataframe)
+ italic(i = ~!is.na(variable), italic = TRUE) |> 
+ # format the grouped rows with a splash of grey. We are not barbarians.
+ bg(i = ~!is.na(variable), bg = 'grey90') |> 
+ # align all of the columns to the center
+ align(align = 'center', part = 'all') |> 
+ # align just the first column to the left
+ align(j = 1, align = 'left', part = 'all') |> 
+ # here is my least favorite part of flextable: footnote()
+ # positioning; i = 1 targets the first row, j = 2 the second column.
+ #              part = 'header' means we are going to target the 
+ #              first row and second column of the header of the table,
+ #              which is everything above and including column labels.
+ footnote(i = 1, j = 2, 
+          # if you don't wrap value in as_paragraph(), you'll get an 
+          # error message that makes no sense at all.
+          value = as_paragraph(mdl_footnote), 
+          # what symbol to link to this footnote
+          ref_symbols = '1', 
+          # see above about positioning
+          part = 'header') |>
+ footnote(i = 1, j = 5,
+          # notice how I had to use j = 5 to target the p-value column,
+          # even though the p-value column is actually the third column
+          # in the spanner row? flextable does not account for merged
+          # columns when you specify position using j. This is probably good.
+          value = as_paragraph(pval_footnote),
+          ref_symbols = '2',
+          part = 'header') |> 
+ footnote(i = 1, j = 1,
+          value = as_paragraph(abbrv_footnote),
+          # an invisible ref_symbol for footnotes that you don't want to
+          # have linked to any particular cell in the table.
+          ref_symbols = '')
+ )
 
 ```
 
@@ -36,8 +600,10 @@ __Table__ Inclusion criteria for the current study
 
 __Question__: Should we drop the last exclusion given our focus is on all cause mortality?
 
+For now, I will leave last exclusion in since CVD may be a secondary outcome in the analysis.
+
 ```{r}
-flextable(data_excluded$table) |> 
+flextable(data_included$table) |> 
  width(j = 1, width = 4) |> 
  set_header_labels(name = 'Exclusion criteria', 
                    value = 'Number of participants')
@@ -52,6 +618,8 @@ __Table__ Participant characteristics at the Year 0 Exam.
 tbl_chrs$Y0 |> 
  as_flex_table() |> 
  theme_box() |> 
+ width(width = 3/4) |> 
+ width(j = 1, width = 1.75) |> 
  align(align = 'center', part = 'all') |> 
  align(j = 1, align = 'left', part = 'all')
   
@@ -66,6 +634,8 @@ __Table__ Participant characteristics at the Year 20 Exam.
 tbl_chrs$Y20 |> 
  as_flex_table() |> 
  theme_box() |> 
+ width(width = 3/4) |> 
+ width(j = 1, width = 1.75) |>
  align(align = 'center', part = 'all') |> 
  align(j = 1, align = 'left', part = 'all')
   
@@ -75,65 +645,55 @@ tbl_chrs$Y20 |>
 
 __Table__: Hazard ratio (95%) for all-cause mortality among CARDIA participants in the current analysis.
 
-```{r tbls_death}
 
+```{r}
 
-tbl_fit_death |> 
- mutate(
-  level = recode(
-   level,
-   "gteq 12 minutes" = "\u2265 12 minutes",
-   "8 to 12 minutes" = "\u2265 8 to < 12 minutes",
-   "lt 8 minutes" = "< 8 minutes",
-   "lt 25% decline" = "< 25% decline",
-   "25 to 35% decline" = "\u2265 25% to < 35% decline",
-   "gteq 35% decline" = "\u2265 35% decline"
-  )
- ) |> 
- mutate(
-  tbl_value = if_else(
-   is.na(est),
-   true = '1 (ref)',
-   false = table_glue("{est}\n({lwr}, {upr})", rspec = rspec)
-  ),
-  .after = level
- ) |>
- mutate(across(starts_with('pval'), table_pvalue)) |> 
- select(-est, -lwr, -upr) |> 
- pivot_wider(names_from = model, values_from = contains('val')) |> 
- select(variable, level,
-        tbl_value_m1,
-        tbl_value_m2,
-        tbl_value_m3,
-        pval_race_m3,
-        pval_sex_m3) |> 
- as_grouped_data(groups = 'variable') |> 
- as_flextable(hide_grouplabel = TRUE) |> 
- set_header_labels(
-  level = 'Characteristic',
-  tbl_value_m1 = "Model 1",
-  tbl_value_m2 = "Model 2",
-  tbl_value_m3 = "Model 3",
-  pval_race_m3 = "Race",
-  pval_sex_m3 = "Sex"
- ) |> 
- add_header_row(values = c("", 
-                           "Hazard ratio (95% CI)", 
-                           "P-value\nfor interaction"), 
-                colwidths = c(1, 3, 2)) |> 
- theme_box() |> 
- width(j = ~ pval_race_m3 + pval_sex_m3, 
-       width = 2/3) |> 
- width(j = ~ tbl_value_m1 + tbl_value_m2 + tbl_value_m3, 
-       width = 1) |>   
- width(j = ~ level, width = 1.75) |> 
- italic(i = ~!is.na(variable), italic = TRUE) |> 
- align(align = 'center', part = 'all') |> 
- align(j = 1, align = 'left', part = 'all')
+tbls_fit_ovrl$death
 
 ```
 
 \newpage 
+
+__Table__: Hazard ratio (95%) for any cardiovascular disease event among CARDIA participants in the current analysis.
+
+```{r}
+tbls_fit_ovrl$cvd
+```
+
+\newpage 
+
+__Table__: Hazard ratio (95%) for all-cause mortality among black CARDIA participants in the current analysis.
+
+```{r}
+tbls_fit_black$death
+```
+
+\newpage
+
+__Table__: Hazard ratio (95%) for any all-cause mortality among white CARDIA participants in the current analysis.
+
+```{r}
+
+tbls_fit_white$death
+
+```
+
+\newpage
+
+__Table__: Hazard ratio (95%) for any cardiovascular disease event among black CARDIA participants in the current analysis.
+
+```{r}
+tbls_fit_black$cvd
+```
+
+\newpage
+
+__Table__: Hazard ratio (95%) for any cardiovascular disease event among white CARDIA participants in the current analysis.
+
+```{r}
+tbls_fit_white$cvd
+```
+
 
 # Reproducibility
 

@@ -3,14 +3,13 @@
 #' .. content for \details{} ..
 #'
 #' @title
-#' @param data_excluded
+#' @param data_included
 visualize_events <- function(data_gxt_all,
                              data_cvd_all,
                              IDs_included,
                              grp_vars) {
 
   data_descriptive <- data_gxt_all |>
-   mutate(ID = as.numeric(ID)) |>
    left_join(data_cvd_all) |>
    filter(ID %in% IDs_included)
 
