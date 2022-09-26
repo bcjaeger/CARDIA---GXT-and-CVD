@@ -5,7 +5,7 @@
 #' @title
 #' @param data_gxt_all
 #' @param data_cvd
-exclude <- function(data_gxt_all, data_cvd) {
+exclude <- function(data_gxt_all, data_cvd, sensitivity_analysis = FALSE) {
 
  # convert to long data before any exclusions
  e0 <- data_gxt_all |>
@@ -99,8 +99,25 @@ exclude <- function(data_gxt_all, data_cvd) {
    "Alive and CVD free at Year 20 exam"
  )
 
+ e4 <- e3
+
+ if(sensitivity_analysis){
+  # reverse causality sensitivity analysis
+  e4 <- e3 %>%
+   # remove CVD cases within 2 years of y20
+   filter(!(time_cvd_any_y20 < 365.25 * 2 & status_cvd_any == 1)) %>%
+   # remove death cases within 2 years of y20
+   filter(!(time_death_y20 < 365.25 * 2 & status_death == 1))
+
+  n_participants <- c(n_participants, nrow(e4))
+
+  names(n_participants)[length(n_participants)] <-
+   "Alive and CVD free for at least 2 years after Y20"
+
+ }
+
  list(table = enframe(n_participants),
-      data_cvd = e3,
-      data_gxt = filter(e2, ID %in% e3$ID))
+      data_cvd = e4,
+      data_gxt = filter(e2, ID %in% e4$ID))
 
 }

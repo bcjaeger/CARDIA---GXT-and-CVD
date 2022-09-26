@@ -2,10 +2,9 @@
 source("./packages.R")
 
 # TODO:
-
-
-
-
+# re-run analysis excluding participants who died within 2 yrs of Y20
+# verify the initialize_duration and fill in Kelley's example
+# mixed model method for exposure
 
 
 ## Load your R files
@@ -39,7 +38,8 @@ list(
 
  tar_target(data_cvd_all, load_cvd_all()),
 
- tar_target(data_included, exclude(data_gxt_all, data_cvd_all)),
+ tar_target(data_included, exclude(data_gxt_all, data_cvd_all,
+                                   sensitivity_analysis = T)),
 
  tar_target(IDs_included, unique(data_included$data_gxt$ID)),
 
