@@ -16,7 +16,8 @@ cph_fit_ns <- function(data_analysis,
                        x_ref,
                        pass = 1) {
 
-  if(subset != 'overall' && pass == 1){
+
+ if(subset != 'overall' && pass == 1){
 
    lvls <- levels(data_analysis[[1]][[subset]])
    output <- vector(mode = 'list', length = length(lvls))
@@ -30,7 +31,12 @@ cph_fit_ns <- function(data_analysis,
 
     for(i in seq_along(data_analysis_sub)){
 
-     rows_keep <- data_analysis_sub[[i]][[subset]] == lvl
+     # reminder: dataset_0 can have missing values
+     # drop them here if needed.
+     rows_keep <-
+      data_analysis_sub[[i]][[subset]] == lvl &
+      !is.na(data_analysis_sub[[i]][[subset]])
+
      data_analysis_sub[[i]] <- data_analysis_sub[[i]][rows_keep, ]
 
     }
@@ -47,6 +53,7 @@ cph_fit_ns <- function(data_analysis,
    return(bind_rows(output))
 
   }
+
 
   data_fit <- map(
    .x = data_analysis,

@@ -16,6 +16,8 @@ knitr::opts_chunk$set(echo = FALSE,
 tar_load(c(data_included,
            tbl_cod, 
            tbl_chrs,
+           tbl_chrs_missing_gxt,
+           tbl_gxt_miss,
            fig_forest, 
            fig_splines))
 
@@ -103,7 +105,7 @@ __Figure 1__: Multivariable-adjusted hazard ratios for all-cause mortality and c
 
 ```{r splines, fig.align='center', fig.height=9, fig.width=7.5}
 
-fig_splines$plot[[9]]
+fig_splines$plot[fig_splines$group == 'overall'][[1]]
 
 ```
 Grey shaded areas represent 95% confidence intervals for the point-estimate.
@@ -152,6 +154,77 @@ block_section(
   )
 
 )
+
+```
+
+\newpage
+
+__Table S1__ Participant characteristics by missing GXT status at the Year 0 Exam.
+```{r}
+
+tbl_chrs_missing_gxt$tables[[1]] |> 
+ as_flex_table() |> 
+ theme_box() |> 
+ width(width = 1) |> 
+ width(j = 1, width = 2) |> 
+ align(align = 'center', part = 'all') |> 
+ align(j = 1, align = 'left', part = 'all')
+  
+```
+
+\newpage
+
+__Table S2__ Participant characteristics by missing GXT status at the Year 7 Exam.
+```{r}
+
+tbl_chrs_missing_gxt$tables[[2]] |> 
+ as_flex_table() |> 
+ theme_box() |> 
+ width(width = 1) |> 
+ width(j = 1, width = 2) |> 
+ align(align = 'center', part = 'all') |> 
+ align(j = 1, align = 'left', part = 'all')
+  
+```
+
+\newpage
+
+__Table S3__ Participant characteristics by missing GXT status at the Year 20 Exam.
+```{r}
+
+tbl_chrs_missing_gxt$tables[[3]] |> 
+ as_flex_table() |> 
+ theme_box() |> 
+ width(width = 1) |> 
+ width(j = 1, width = 2) |> 
+ align(align = 'center', part = 'all') |> 
+ align(j = 1, align = 'left', part = 'all')
+  
+```
+
+
+\newpage
+
+__Table S4__ Number and percent of completed GXT tests by exam period, overall and in subgroups defined by race and sex.
+
+
+```{r}
+
+tbl_gxt_miss %>% 
+ as_grouped_data(groups = 'variable') %>% 
+ slice(-1) %>% 
+ as_flextable(hide_grouplabel = TRUE) %>% 
+ set_header_labels(group = 'Group',
+                   A = "Year 0",
+                   D = "Year 7",
+                   G = "Year 20") %>% 
+ theme_box() |> 
+ padding(j = 1, i = ~ is.na(variable) & group != 'Overall', 
+         padding.left = 20) %>% 
+ width(width = 1) |> 
+ width(j = 1, width = 2) |> 
+ align(align = 'center', part = 'all') |> 
+ align(j = 1, align = 'left', part = 'all')
 
 ```
 

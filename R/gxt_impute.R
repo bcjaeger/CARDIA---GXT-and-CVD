@@ -6,7 +6,6 @@
 #' @param data_gxt_all
 gxt_impute <- function(data_gxt_all,
                        data_cvd_all,
-                       IDs_included,
                        n_impute = 2,
                        n_iter = 2) {
 
@@ -21,9 +20,18 @@ gxt_impute <- function(data_gxt_all,
  data_to_impute <- data_gxt_all |>
   select(-starts_with("gxt_valid")) |>
   left_join(data_cvd_all) |>
-  select(-cod_noncvd, -cod_cvd) |>
+  select(-cod_noncvd, -cod_cvd,
+         -contains("_chd_"),
+         -contains("_stroke_")) |>
   mutate(cod = replace(cod, is.na(cod), 'alive'))
 
+ # data_to_impute$haz_death_y20 <- data_to_impute %>%
+ #  mice::nelsonaalen(timevar = 'time_death_y20',
+ #                    statusvar = 'status_death')
+ #
+ # data_to_impute$haz_cvd_any_y20 <- data_to_impute %>%
+ #  mice::nelsonaalen(timevar = 'time_cvd_any_y20',
+ #                    statusvar = 'status_cvd_any')
 
  vars <- vector(mode = 'list', length = ncol(data_to_impute))
  names(vars) <- names(data_to_impute)
@@ -38,6 +46,7 @@ gxt_impute <- function(data_gxt_all,
 
  preds <- setdiff(
   x = names(data_to_impute),
+  # don't use these as predictors
   y = c("ID",
         "exam_age..B",
         "exam_age..C",
@@ -49,12 +58,14 @@ gxt_impute <- function(data_gxt_all,
 
  for(v in seq_along(vars)) vars[[v]] <- setdiff(preds, names(vars)[v])
 
+ set.seed(329)
+
  data_imputed <- data_to_impute |>
   miceRanger(m = n_impute,
              maxiter = n_iter,
              meanMatchCandidates = 10,
              vars = vars,
-             num.trees = 250)
+             num.trees = 500)
 
  # the only difference between post-processing for original data versus
  # imputed data is that na.locf is applied to the imputed data.
@@ -148,7 +159,6 @@ gxt_impute <- function(data_gxt_all,
     labels = c('never', 'former_current', 'former_current')
    )
   ) |>
-  filter(ID %in% IDs_included) |>
   mutate(across(where(is.factor), as.character),
          across(where(is.character), str_dots),
          across(where(is.character), as.factor)) |>
@@ -254,7 +264,6 @@ gxt_impute <- function(data_gxt_all,
       labels = c('never', 'former_current', 'former_current')
      )
     ) |>
-    filter(ID %in% IDs_included) |>
     mutate(across(where(is.factor), as.character),
            across(where(is.character), str_dots),
            across(where(is.character), as.factor)) |>

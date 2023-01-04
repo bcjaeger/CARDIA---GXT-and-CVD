@@ -8,7 +8,7 @@ load_cvd_all <- function() {
 
  # import mortality data ----------------------------------------------------
 
- mortality_q <- read_sas('data/z33e21.sas7bdat')
+ mortality_q <- read_sas('data/z33e22.sas7bdat')
 
  data_mortality <- mortality_q |>
   filter(Z33ECLASS != 1,
@@ -47,7 +47,7 @@ load_cvd_all <- function() {
   ) |>
   distinct()
 
- outcomes <- read_sas('data/outcomes21_v3.sas7bdat') |>
+ outcomes <- read_sas('data/outcomes22.sas7bdat') |>
   mutate(ID = as.character(ID)) |>
   select(ID,
 
@@ -56,14 +56,14 @@ load_cvd_all <- function() {
          status_stroke_any  = strokeafnf,
          status_stroke_hard = strokehfnf,
          status_cvd_any     = CVDafnf,
-         status_death       = DEAD21,
+         status_death       = DEAD22,
 
          time_chd_any_y20     = CHDafnfgtt,
          time_chd_hard_y20    = CHDhfnfgtt,
          time_stroke_any_y20  = strokeafnfgtt,
          time_stroke_hard_y20 = strokehfnfgtt,
          time_cvd_any_y20     = cvdafnfgtt,
-         time_death_y20       = DEAD21gtt)
+         time_death_y20       = DEAD22gtt)
 
  left_join(outcomes, data_mortality) |>
  # there is one participant with unknown COD and status_death = 0

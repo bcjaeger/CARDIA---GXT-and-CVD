@@ -9,8 +9,8 @@
 #'
 
 as_mitml_result <- function(x){
-class(x) <- c("mitml.result", class(x))
-x
+ class(x) <- c("mitml.result", class(x))
+ x
 }
 
 cph_fit <- function(data_analysis,
@@ -78,7 +78,11 @@ cph_fit <- function(data_analysis,
 
   c1 <- setdiff(c1, take_out)
 
-  c2 <- c(c1, 'bmi', 'pa_self', 'health_self', 'smoke')
+  c2 <- c(c1,
+          'bmi',
+          'pa_self',
+          'health_self',
+          'smoke')
 
   c3 <- c(c1,
           "duration_educ_hs_ged_or_less",

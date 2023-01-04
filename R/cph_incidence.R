@@ -19,8 +19,6 @@ cph_incidence <- function(data,
   return(tibble())
  }
 
- # browser()
-
  if(subset == 'overall'){
 
   incidence <- map_dfr(
@@ -96,6 +94,7 @@ cph_incidence_worker <- function(data,
                                  time,
                                  status,
                                  horizon = 365.25 * 10){
+
 
  total_events <- sum(getElement(data, status))
 

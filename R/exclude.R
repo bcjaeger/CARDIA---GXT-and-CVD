@@ -5,7 +5,10 @@
 #' @title
 #' @param data_gxt_all
 #' @param data_cvd
-exclude <- function(data_gxt_all, data_cvd, sensitivity_analysis = FALSE) {
+exclude <- function(data_gxt_all,
+                    data_cvd_all,
+                    sensitivity_analysis = FALSE,
+                    complete_case_analysis = FALSE) {
 
  # convert to long data before any exclusions
  e0 <- data_gxt_all |>
@@ -83,7 +86,7 @@ exclude <- function(data_gxt_all, data_cvd, sensitivity_analysis = FALSE) {
 
  # Switching to exclusions based on CVD
 
- e3 <- data_cvd |>
+ e3 <- data_cvd_all |>
    filter(ID %in% e2_ids) |>
    filter(time_death_y20 > 0) |>
    filter(time_cvd_any_y20 > 0) |>
@@ -101,7 +104,7 @@ exclude <- function(data_gxt_all, data_cvd, sensitivity_analysis = FALSE) {
 
  e4 <- e3
 
- if(sensitivity_analysis){
+ if (sensitivity_analysis) {
   # reverse causality sensitivity analysis
   e4 <- e3 %>%
    # remove CVD cases within 2 years of y20
@@ -114,10 +117,39 @@ exclude <- function(data_gxt_all, data_cvd, sensitivity_analysis = FALSE) {
   names(n_participants)[length(n_participants)] <-
    "Alive and CVD free for at least 2 years after Y20"
 
+ } else if (complete_case_analysis) {
+
+  # imputation sensitivity analysis
+  e2_complete <- e2 %>%
+   # start with exclusion 3 IDs
+   filter(ID %in% e3$ID) %>%
+   # drop rows with missing data to make 'complete cases'
+   drop_na(gxt_duration, CENTER, race, sex, educ) %>%
+   # count number of observed gxt for each ID
+   count(ID) %>%
+   # completed all 3 GXT duration tests
+   filter(n == 3)
+
+  e4 <- filter(e4, ID %in% e2_complete$ID)
+
+  n_participants <- c(n_participants, nrow(e4))
+
+  names(n_participants)[length(n_participants)] <-
+   "Complete data for GXT, testing center, race, sex, and education"
+
  }
+
+ total_tests <- e2 %>%
+  filter(ID %in% e4$ID) %>%
+  drop_na(gxt_duration) %>%
+  count(exam)
+
+ total_fup_yrs <- sum(e4$time_death_y20) * 0.00273973
 
  list(table = enframe(n_participants),
       data_cvd = e4,
-      data_gxt = filter(e2, ID %in% e4$ID))
+      data_gxt = filter(e2, ID %in% e4$ID),
+      total_tests = sum(total_tests$n),
+      total_fup_yrs = total_fup_yrs)
 
 }

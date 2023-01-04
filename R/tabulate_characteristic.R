@@ -32,6 +32,8 @@ tabulate_characteristic <- function(data) {
      -gxt_hr_s2
     ) |>
     mutate(
+     # report GXT in minutes for reports
+     gxt_duration = gxt_duration / 60,
      paying_for_basics = recode(
       paying_for_basics,
       not_very_hard = 'Not very hard',
@@ -74,7 +76,7 @@ tabulate_characteristic <- function(data) {
      label = list(
       CENTER ~ "Testing center",
       exam_age ~ "Age",
-      gxt_duration ~ "GXT duration, seconds",
+      gxt_duration ~ "GXT duration, minutes",
       # gxt_hr_s2 ~ "GXT heart rate; stage 2, beats per minute",
       educ ~ "Education at year 20",
       paying_for_basics ~ "Difficulty paying for basics",

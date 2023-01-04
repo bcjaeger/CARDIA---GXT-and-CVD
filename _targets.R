@@ -19,7 +19,8 @@ analyses <-
   group = c("overall",
             "sex",
             "race",
-            "race_sex"),
+            "race_sex",
+            "pa_self_cat"),
   outcomes = c('time_cvd_any_y20..status_cvd_any',
                'time_death_y20..status_death'),
   exposure = c("gxt_int_cat",
@@ -38,12 +39,20 @@ list(
 
  tar_target(data_cvd_all, load_cvd_all()),
 
- tar_target(data_included, exclude(data_gxt_all, data_cvd_all,
-                                   sensitivity_analysis = T)),
+ tar_target(data_included, exclude(data_gxt_all,
+                                   data_cvd_all,
+                                   sensitivity_analysis = FALSE,
+                                   complete_case_analysis = TRUE)),
+
+ tar_target(tbl_gxt_miss, tabulate_gxt_miss(data_included)),
 
  tar_target(IDs_included, unique(data_included$data_gxt$ID)),
 
- tar_target(tbl_chrs, tabulate_characteristic(data_included$data_gxt)),
+ tar_target(tbl_chrs,
+            tabulate_characteristic(data_included$data_gxt)),
+
+ tar_target(tbl_chrs_missing_gxt,
+            tabulate_characteristics_missing_gxt(data_included)),
 
  tar_target(tbl_cod, tabulate_cod(data_included)),
 
@@ -52,11 +61,13 @@ list(
                                        IDs_included,
                                        grp_vars = c("CENTER","race","sex"))),
 
- tar_target(data_gxt_imputed, gxt_impute(data_gxt_all,
-                                         data_cvd_all,
-                                         IDs_included,
-                                         n_impute = 10,
-                                         n_iter = 10)),
+ tar_target(data_gxt_imputed_all, gxt_impute(data_gxt_all,
+                                             data_cvd_all,
+                                             n_impute = 25,
+                                             n_iter = 10)),
+
+ tar_target(data_gxt_imputed, gxt_filter(data_gxt_imputed_all,
+                                         IDs_included)),
 
  tar_target(data_analysis, gxt_prep(data_gxt_imputed, data_included)),
 

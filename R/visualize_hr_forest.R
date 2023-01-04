@@ -71,6 +71,8 @@ visualize_hr_forest <- function(recoders, cph_inc, cph_tbl) {
   mutate(outcome = recode(outcome, !!!outcome_recoders),
          group = fct_relevel(group,
                              'overall',
+                             'meeting_guidelines',
+                             'not_meeting_guidelines',
                              'Black',
                              'White',
                              'Male',
@@ -81,6 +83,8 @@ visualize_hr_forest <- function(recoders, cph_inc, cph_tbl) {
                              'White_Female'),
          group = fct_recode(group,
                             'Overall' = 'overall',
+                            'Yes' = 'meeting_guidelines',
+                            'No' = 'not_meeting_guidelines',
                             'Men' = 'Male',
                             'Women' = 'Female',
                             'Black Men' = 'Black_Male',
@@ -135,17 +139,38 @@ forest_worker <- function(data,
                           y_col_3 = exp(1.25),
                           y_col_4 = exp(2),
                           size_text = 3,
-                          size_arrow = 0.15){
+                          size_arrow = 0.15,
+                          include_PA = TRUE){
 
- gg_data <- data |>
-  mutate(group = as.character(group),
-         group = if_else(group == 'Overall',
-                         group,
-                         paste("  ", group))) |>
-  add_row(group = 'Race', .before = 2) |>
-  add_row(group = 'Sex', .before = 5) |>
-  add_row(group = 'Race by Sex', .before = 8) |>
-  mutate(x = rev(seq(n())))
+ if(include_PA){
+
+  gg_data <- data |>
+   mutate(group = as.character(group),
+          group = if_else(group == 'Overall',
+                          group,
+                          paste("  ", group))) |>
+   add_row(group = "Meeting PA Guidelines", .before = 2) %>%
+   add_row(group = 'Race', .before = 5) |>
+   add_row(group = 'Sex', .before = 8) |>
+   add_row(group = 'Race by Sex', .before = 11) |>
+   mutate(x = rev(seq(n())))
+
+ } else {
+
+  gg_data <- data |>
+   filter(group != 'Meeting PA Guideline',
+          group != "No",
+          group != "Yes") %>%
+   mutate(group = as.character(group),
+          group = if_else(group == 'Overall',
+                          group,
+                          paste("  ", group))) |>
+   add_row(group = 'Race', .before = 2) |>
+   add_row(group = 'Sex', .before = 5) |>
+   add_row(group = 'Race by Sex', .before = 8) |>
+   mutate(x = rev(seq(n())))
+
+ }
 
  xmax <- max(gg_data$x)
  ymax <- y_col_4 + 4
